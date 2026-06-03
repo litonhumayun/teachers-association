@@ -8,15 +8,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const ALLOWED_ROLES = ["secretary", "president", "admin"];
-const SECRET_ALLOWED_ROLES = ["secretary", "admin"];
 
-export default function AddNotice() {
+export default function AddDocument() {
   const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [type, setType] = useState<"public" | "secret">("public");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [link, setLink] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [userRole, setUserRole] = useState("");
   const [userName, setUserName] = useState("");
   const [uid, setUid] = useState("");
   const router = useRouter();
@@ -28,10 +27,9 @@ export default function AddNotice() {
         const docSnap = await getDoc(doc(db, "users", user.uid));
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setUserRole(data.role);
           setUserName(data.name);
           if (!ALLOWED_ROLES.includes(data.role)) {
-            router.push("/notices");
+            router.push("/documents");
           }
         }
       }
@@ -43,29 +41,25 @@ export default function AddNotice() {
     e.preventDefault();
     setError("");
 
-    if (!title || !content) {
-      setError("Please fill in all fields.");
-      return;
-    }
-
-    if (type === "secret" && !SECRET_ALLOWED_ROLES.includes(userRole)) {
-      setError("You are not allowed to add secret notices.");
+    if (!title || !category || !link) {
+      setError("Please fill in all required fields.");
       return;
     }
 
     setSaving(true);
     try {
-      await addDoc(collection(db, "notices"), {
+      await addDoc(collection(db, "documents"), {
         title,
-        content,
-        type,
+        category,
+        description,
+        link,
         createdBy: userName,
         createdById: uid,
         createdAt: new Date().toISOString(),
       });
-      router.push("/notices");
+      router.push("/documents");
     } catch {
-      setError("Failed to add notice. Please try again.");
+      setError("Failed to add document. Please try again.");
     }
     setSaving(false);
   };
@@ -73,43 +67,60 @@ export default function AddNotice() {
   return (
     <ProtectedRoute>
       <main className="max-w-2xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-green-700 mb-6">Add Notice</h1>
+        <h1 className="text-2xl font-bold text-green-700 mb-6">Add Document</h1>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-4">
+
           <div>
-            <label className="block text-sm font-medium mb-1">Title</label>
+            <label className="block text-sm font-medium mb-1">Title <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="Notice title"
+              placeholder="Document title"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Content</label>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={6}
-              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="Notice content..."
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Notice Type</label>
+            <label className="block text-sm font-medium mb-1">Category <span className="text-red-500">*</span></label>
             <select
-              value={type}
-              onChange={(e) => setType(e.target.value as "public" | "secret")}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
               className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="public">🌐 Public — Everyone can see</option>
-              {SECRET_ALLOWED_ROLES.includes(userRole) && (
-                <option value="secret">🔒 Secret — Members only</option>
-              )}
+              <option value="">Select Category</option>
+              <option value="Constitution">Constitution</option>
+              <option value="Meeting Minutes">Meeting Minutes</option>
+              <option value="Financial Reports">Financial Reports</option>
+              <option value="Notices">Notices</option>
+              <option value="Other">Other</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="Brief description of the document..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Google Drive Link <span className="text-red-500">*</span></label>
+            <input
+              type="url"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="https://drive.google.com/..."
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Upload PDF to Google Drive → Share → Anyone with link → Copy link
+            </p>
           </div>
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -120,16 +131,17 @@ export default function AddNotice() {
               disabled={saving}
               className="flex-1 bg-green-700 text-white py-2 rounded-lg hover:bg-green-800 transition disabled:opacity-50"
             >
-              {saving ? "Posting..." : "Post Notice"}
+              {saving ? "Saving..." : "Add Document"}
             </button>
             <button
               type="button"
-              onClick={() => router.push("/notices")}
+              onClick={() => router.push("/documents")}
               className="flex-1 border text-gray-600 py-2 rounded-lg hover:bg-gray-50 transition"
             >
               Cancel
             </button>
           </div>
+
         </form>
       </main>
     </ProtectedRoute>

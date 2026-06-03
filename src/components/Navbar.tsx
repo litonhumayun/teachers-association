@@ -60,6 +60,7 @@ export default function Navbar() {
               {loggedIn ? (
                 <>
                   <Link href="/members" className="hover:underline text-sm">Members</Link>
+                  <Link href="/documents" className="hover:underline text-sm">Documents</Link>
                   <Link href="/dashboard" className="hover:underline text-sm">Dashboard</Link>
                   <Link href="/profile" className="hover:underline text-sm">Profile</Link>
                   {userData?.role === "admin" && (
