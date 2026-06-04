@@ -1,6 +1,7 @@
 "use client";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { logAction } from "@/lib/auditLog";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -29,6 +30,8 @@ export default function Documents() {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState("");
   const [filter, setFilter] = useState("all");
+  const [userName, setUserName] = useState("");
+const [userId, setUserId] = useState("");
 
   const categories = [
     "Constitution",
@@ -69,9 +72,11 @@ export default function Documents() {
         if (user) {
           const userDoc = await getDoc(doc(db, "users", user.uid));
 
-          if (userDoc.exists()) {
-            setUserRole(userDoc.data().role || "");
-          }
+        if (userDoc.exists()) {
+  setUserRole(userDoc.data().role || "");
+  setUserName(userDoc.data().name || "");
+  setUserId(user.uid);
+}
         }
 
         await fetchDocuments();
@@ -85,24 +90,22 @@ export default function Documents() {
     return () => unsubscribe();
   }, []);
 
-  const handleDelete = async (id: string) => {
-    const confirmed = confirm(
-      "Are you sure you want to delete this document?"
+ const handleDelete = async (id: string) => {
+  if (!confirm("Are you sure you want to delete this document?")) return;
+  try {
+    await deleteDoc(doc(db, "documents", id));
+    await logAction(
+      "Document Deleted",
+      `Document deleted by ${userName}`,
+      userName,
+      userId,
+      "document"
     );
-
-    if (!confirmed) return;
-
-    try {
-      await deleteDoc(doc(db, "documents", id));
-
-      setDocuments((prev) =>
-        prev.filter((document) => document.id !== id)
-      );
-    } catch (error) {
-      console.error(error);
-      alert("Failed to delete document.");
-    }
-  };
+    setDocuments(documents.filter((d) => d.id !== id));
+  } catch {
+    alert("Failed to delete document.");
+  }
+};
 
   const filteredDocuments = documents.filter((document) => {
     if (filter === "all") return true;

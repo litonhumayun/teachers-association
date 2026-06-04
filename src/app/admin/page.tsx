@@ -1,9 +1,10 @@
 "use client";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { logAction } from "@/lib/auditLog";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -29,6 +30,32 @@ export default function AdminPanel() {
   const [currentUser, setCurrentUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("pending");
+  const [deleteRequests, setDeleteRequests] = useState<{
+  id: string;
+  userId: string;
+  userName: string;
+  memberId: string;
+  reason: string;
+  status: string;
+  requestedAt: string;
+}[]>([]);
+
+
+const [donationSettings, setDonationSettings] = useState({
+  donationActive: false,
+  donationAmount: 0,
+  donationTitle: "",
+  donationActivatedBy: "",
+  donationActivatedAt: "",
+});
+
+
+
+const [donationAmount, setDonationAmount] = useState("");
+const [donationTitle, setDonationTitle] = useState("");
+const [donationSaving, setDonationSaving] = useState(false);
+
+
   const router = useRouter();
   const subjectCodes: { [key: string]: string } = {
   English: "11",
@@ -50,6 +77,33 @@ export default function AdminPanel() {
     setAllMembers(allSnap.docs.map((d) => d.data() as UserData));
   };
 
+const fetchDonationSettings = async () => {
+  const docSnap = await getDoc(doc(db, "settings", "donation"));
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    setDonationSettings({
+      donationActive: data.donationActive || false,
+      donationAmount: data.donationAmount || 0,
+      donationTitle: data.donationTitle || "",
+      donationActivatedBy: data.donationActivatedBy || "",
+      donationActivatedAt: data.donationActivatedAt || "",
+    });
+  }
+};
+const fetchDeleteRequests = async () => {
+  const snap = await getDocs(
+    query(collection(db, "deleteRequests"), where("status", "==", "pending"))
+  );
+  setDeleteRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() } as {
+    id: string;
+    userId: string;
+    userName: string;
+    memberId: string;
+    reason: string;
+    status: string;
+    requestedAt: string;
+  })));
+};
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -65,6 +119,8 @@ export default function AdminPanel() {
           }
         }
         await fetchMembers();
+        await fetchDonationSettings();
+        await fetchDeleteRequests();
       }
       setLoading(false);
     });
@@ -103,6 +159,13 @@ const handleApprove = async (uid: string) => {
     approvedAt: new Date().toISOString(),
   });
   await fetchMembers();
+  await logAction(
+  "Member Approved",
+  `Member ${memberData.name} (${memberId}) approved`,
+  currentUser?.name || "",
+  currentUser?.uid || "",
+  "member"
+);
 };
 
   const handleReject = async (uid: string) => {
@@ -113,6 +176,13 @@ const handleApprove = async (uid: string) => {
       rejectedAt: new Date().toISOString(),
     });
     await fetchMembers();
+    await logAction(
+  "Member Rejected",
+  `Member rejected by ${currentUser?.name}`,
+  currentUser?.name || "",
+  currentUser?.uid || "",
+  "member"
+);
   };
 
   const handleDelete = async (uid: string) => {
@@ -126,6 +196,13 @@ const handleApprove = async (uid: string) => {
   const handleRoleChange = async (uid: string, role: string) => {
     await updateDoc(doc(db, "users", uid), { role });
     await fetchMembers();
+    await logAction(
+  "Role Changed",
+  `Member role changed to ${role}`,
+  currentUser?.name || "",
+  currentUser?.uid || "",
+  "member"
+);
   };
 
   if (loading) {
@@ -135,35 +212,258 @@ const handleApprove = async (uid: string) => {
       </div>
     );
   }
+const handleActivateDonation = async () => {
+  if (!donationAmount || !donationTitle) {
+    alert("Please enter donation amount and title.");
+    return;
+  }
+  setDonationSaving(true);
+  await setDoc(doc(db, "settings", "donation"), {
+    donationActive: true,
+    donationAmount: Number(donationAmount),
+    donationTitle,
+    donationActivatedBy: currentUser?.name,
+    donationActivatedAt: new Date().toISOString(),
+  });
+  await fetchDonationSettings();
+  setDonationSaving(false);
+};
 
+const handleDeactivateDonation = async () => {
+  if (!confirm("Are you sure you want to deactivate donation?")) return;
+  setDonationSaving(true);
+  await setDoc(doc(db, "settings", "donation"), {
+    donationActive: false,
+    donationAmount: 0,
+    donationTitle: "",
+    donationActivatedBy: "",
+    donationActivatedAt: "",
+  });
+  await fetchDonationSettings();
+  setDonationSaving(false);
+};
   return (
     <ProtectedRoute>
       <main className="max-w-6xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold text-green-700 mb-6">Admin Panel</h1>
 
         {/* Tabs */}
-        <div className="flex gap-4 mb-6">
-          <button
-            onClick={() => setActiveTab("pending")}
-            className={`px-4 py-2 rounded-lg font-medium transition ${
-              activeTab === "pending"
-                ? "bg-green-700 text-white"
-                : "bg-white text-gray-600 border hover:bg-gray-50"
-            }`}
-          >
-            Pending Approval ({pendingMembers.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("all")}
-            className={`px-4 py-2 rounded-lg font-medium transition ${
-              activeTab === "all"
-                ? "bg-green-700 text-white"
-                : "bg-white text-gray-600 border hover:bg-gray-50"
-            }`}
-          >
-            All Members ({allMembers.length})
-          </button>
+
+
+{/* Tabs */}
+<div className="flex gap-4 mb-6">
+  <button
+    onClick={() => setActiveTab("pending")}
+    className={`px-4 py-2 rounded-lg font-medium transition ${
+      activeTab === "pending"
+        ? "bg-green-700 text-white"
+        : "bg-white text-gray-600 border hover:bg-gray-50"
+    }`}
+  >
+    Pending Approval ({pendingMembers.length})
+  </button>
+  <button
+    onClick={() => setActiveTab("all")}
+    className={`px-4 py-2 rounded-lg font-medium transition ${
+      activeTab === "all"
+        ? "bg-green-700 text-white"
+        : "bg-white text-gray-600 border hover:bg-gray-50"
+    }`}
+  >
+    All Members ({allMembers.length})
+  </button>
+  <button
+    onClick={() => setActiveTab("donation")}
+    className={`px-4 py-2 rounded-lg font-medium transition ${
+      activeTab === "donation"
+        ? "bg-green-700 text-white"
+        : "bg-white text-gray-600 border hover:bg-gray-50"
+    }`}
+  >
+    Donation Settings
+  </button>
+  <button
+  onClick={() => setActiveTab("deleteRequests")}
+  className={`px-4 py-2 rounded-lg font-medium transition ${
+    activeTab === "deleteRequests"
+      ? "bg-green-700 text-white"
+      : "bg-white text-gray-600 border hover:bg-gray-50"
+  }`}
+>
+  Delete Requests ({deleteRequests.length})
+</button>
+  <button
+  onClick={() => setActiveTab("audit")}
+  className={`px-4 py-2 rounded-lg font-medium transition ${
+    activeTab === "audit"
+      ? "bg-green-700 text-white"
+      : "bg-white text-gray-600 border hover:bg-gray-50"
+  }`}
+>
+  Audit Log
+</button>
+</div>
+{activeTab === "audit" && (
+  <div className="bg-white rounded-lg shadow p-6">
+    <div className="flex justify-between items-center mb-4">
+      <h2 className="text-lg font-semibold text-gray-700">Audit Log</h2>
+
+      <a
+        href="/audit"
+        className="text-green-700 text-sm font-medium hover:underline"
+      >
+        View Full Audit Log →
+      </a>
+    </div>
+
+    <p className="text-gray-500 text-sm">
+      Click the link above to view the full audit log with filters and pagination.
+    </p>
+  </div>
+)}
+        {/* Donation Settings */}
+{activeTab === "donation" && (
+  <div className="bg-white rounded-lg shadow p-6">
+    <h2 className="text-lg font-semibold text-gray-700 mb-4">Donation Settings</h2>
+
+    {/* Current Status */}
+    <div className={`rounded-lg p-4 mb-6 ${
+      donationSettings.donationActive
+        ? "bg-green-50 border border-green-200"
+        : "bg-gray-50 border border-gray-200"
+    }`}>
+      <div className="flex justify-between items-center">
+        <div>
+          <p className="font-medium text-gray-700">Current Status</p>
+          {donationSettings.donationActive ? (
+            <div className="mt-1">
+              <p className="text-sm text-green-700 font-medium">
+                🟢 Active — {donationSettings.donationTitle}
+              </p>
+              <p className="text-sm text-green-600">
+                Amount: ৳{donationSettings.donationAmount}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Activated by: {donationSettings.donationActivatedBy}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 mt-1">🔴 Inactive</p>
+          )}
         </div>
+        {donationSettings.donationActive && (
+          <button
+            onClick={handleDeactivateDonation}
+            disabled={donationSaving}
+            className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-600 transition disabled:opacity-50"
+          >
+            Deactivate
+          </button>
+        )}
+      </div>
+    </div>
+
+    {/* Activate New Donation */}
+    {!donationSettings.donationActive && (
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium text-gray-700">Activate New Donation</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Donation Title</label>
+            <input
+              type="text"
+              value={donationTitle}
+              onChange={(e) => setDonationTitle(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="e.g. Annual Picnic Fund"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Amount (৳)</label>
+            <input
+              type="number"
+              value={donationAmount}
+              onChange={(e) => setDonationAmount(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              placeholder="e.g. 1000"
+            />
+          </div>
+        </div>
+        <button
+          onClick={handleActivateDonation}
+          disabled={donationSaving}
+          className="bg-green-700 text-white px-6 py-2 rounded-lg hover:bg-green-800 transition disabled:opacity-50"
+        >
+          {donationSaving ? "Activating..." : "Activate Donation"}
+        </button>
+      </div>
+    )}
+  </div>
+)}
+{/* Delete Requests */}
+{activeTab === "deleteRequests" && (
+  <div className="bg-white rounded-lg shadow overflow-hidden">
+    {deleteRequests.length === 0 ? (
+      <p className="text-gray-400 text-center py-8">No delete requests.</p>
+    ) : (
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 text-gray-600">
+          <tr>
+            <th className="px-4 py-3 text-left">Member</th>
+            <th className="px-4 py-3 text-left">Member ID</th>
+            <th className="px-4 py-3 text-left">Reason</th>
+            <th className="px-4 py-3 text-left">Requested At</th>
+            <th className="px-4 py-3 text-left">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {deleteRequests.map((req) => (
+            <tr key={req.id} className="border-t hover:bg-gray-50">
+              <td className="px-4 py-3">{req.userName}</td>
+              <td className="px-4 py-3 text-green-700 font-medium">{req.memberId}</td>
+              <td className="px-4 py-3 text-gray-500">{req.reason}</td>
+              <td className="px-4 py-3 text-xs text-gray-400">
+                {new Date(req.requestedAt).toLocaleDateString("en-BD")}
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!confirm("Are you sure you want to delete this member?")) return;
+                      await updateDoc(doc(db, "users", req.userId), { status: "deleted" });
+                      await updateDoc(doc(db, "deleteRequests", req.id), { status: "approved" });
+                      await logAction(
+                        "Member Deleted",
+                        `${req.userName} (${req.memberId}) deleted by admin`,
+                        currentUser?.name || "",
+                        currentUser?.uid || "",
+                        "member"
+                      );
+                      await fetchDeleteRequests();
+                      await fetchMembers();
+                    }}
+                    className="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600 transition"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await updateDoc(doc(db, "deleteRequests", req.id), { status: "rejected" });
+                      await fetchDeleteRequests();
+                    }}
+                    className="bg-gray-400 text-white px-3 py-1 rounded text-xs hover:bg-gray-500 transition"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+  </div>
+)}
 
         {/* Pending Members */}
         {activeTab === "pending" && (
@@ -288,8 +588,12 @@ const handleApprove = async (uid: string) => {
 </tbody>
               </table>
             )}
+            
           </div>
+          
         )}
+        
+        
       </main>
     </ProtectedRoute>
   );

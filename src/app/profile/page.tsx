@@ -1,9 +1,10 @@
 "use client";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { logAction } from "@/lib/auditLog";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, updateDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
 interface UserData {
@@ -28,6 +29,9 @@ export default function Profile() {
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
   const [uid, setUid] = useState("");
+  const [showDeleteRequest, setShowDeleteRequest] = useState(false);
+const [deleteReason, setDeleteReason] = useState("");
+const [deleteSuccess, setDeleteSuccess] = useState("");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -90,7 +94,34 @@ export default function Profile() {
       </div>
     );
   }
-
+const handleDeleteRequest = async () => {
+  if (!deleteReason) {
+    setError("Please enter a reason.");
+    return;
+  }
+  try {
+    await addDoc(collection(db, "deleteRequests"), {
+      userId: uid,
+      userName: userData?.name,
+      memberId: userData?.memberId,
+      reason: deleteReason,
+      status: "pending",
+      requestedAt: new Date().toISOString(),
+    });
+    await logAction(
+      "Delete Request",
+      `${userData?.name} requested account deletion`,
+      userData?.name || "",
+      uid,
+      "member"
+    );
+    setDeleteSuccess("Delete request submitted successfully!");
+    setShowDeleteRequest(false);
+    setDeleteReason("");
+  } catch {
+    setError("Failed to submit request. Please try again.");
+  }
+};
   return (
     <ProtectedRoute>
       <main className="max-w-3xl mx-auto px-4 py-8">
@@ -265,7 +296,48 @@ export default function Profile() {
           >
             {saving ? "Saving..." : "Save Changes"}
           </button>
-
+{/* Delete Request Section */}
+<div className="mt-6 pt-6 border-t">
+  {!showDeleteRequest ? (
+    <button
+      type="button"
+      onClick={() => setShowDeleteRequest(true)}
+      className="w-full border border-red-300 text-red-500 py-2 rounded-lg hover:bg-red-50 transition text-sm"
+    >
+      Request Account Deletion
+    </button>
+  ) : (
+    <div className="space-y-3">
+      <h3 className="text-sm font-medium text-red-600">Request Account Deletion</h3>
+      <p className="text-xs text-gray-500">
+        Your account will not be deleted immediately. Admin will review your request.
+      </p>
+      <textarea
+        value={deleteReason}
+        onChange={(e) => setDeleteReason(e.target.value)}
+        rows={3}
+        className="w-full border border-red-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+        placeholder="Reason for deletion..."
+      />
+      {deleteSuccess && <p className="text-green-500 text-sm">{deleteSuccess}</p>}
+      <div className="flex gap-3">
+        <button
+          onClick={handleDeleteRequest}
+          className="flex-1 bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 transition text-sm"
+        >
+          Submit Request
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowDeleteRequest(false)}
+          className="flex-1 border text-gray-600 py-2 rounded-lg hover:bg-gray-50 transition text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )}
+</div>
         </form>
       </main>
     </ProtectedRoute>

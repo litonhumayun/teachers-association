@@ -1,11 +1,14 @@
 "use client";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { logAction } from "@/lib/auditLog";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
+
 
 const ALLOWED_ROLES = ["secretary", "president", "admin"];
 const SECRET_ALLOWED_ROLES = ["secretary", "admin"];
@@ -32,6 +35,13 @@ export default function AddNotice() {
           setUserName(data.name);
           if (!ALLOWED_ROLES.includes(data.role)) {
             router.push("/notices");
+            await logAction(
+  "Notice Added",
+  `New ${type} notice "${title}" added`,
+  userName,
+  uid,
+  "notice"
+);
           }
         }
       }

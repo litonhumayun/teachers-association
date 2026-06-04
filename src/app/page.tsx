@@ -1,3 +1,4 @@
+import DonationBanner from "@/components/DonationBanner";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import Link from "next/link";
@@ -85,6 +86,8 @@ export default async function Home() {
 
       {/* Notices Section */}
       <section className="max-w-4xl mx-auto px-4 py-6">
+        {/* Donation Banner */}
+  <DonationBanner />
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold text-green-700">Latest Notices</h2>
           <Link

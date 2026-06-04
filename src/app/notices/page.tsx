@@ -1,5 +1,6 @@
 "use client";
 
+import { logAction } from "@/lib/auditLog";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, deleteDoc, doc, getDoc, getDocs, query, where } from "firebase/firestore";
@@ -79,6 +80,8 @@ export default function Notices() {
   const [userRole, setUserRole] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [filter, setFilter] = useState<"all" | "public" | "secret">("all");
+  const [userName, setUserName] = useState("");
+const [userId, setUserId] = useState("");
 
   const fetchNotices = async (isLoggedIn: boolean) => {
     let q;
@@ -98,9 +101,11 @@ export default function Notices() {
       setLoggedIn(!!user);
       if (user) {
         const docSnap = await getDoc(doc(db, "users", user.uid));
-        if (docSnap.exists()) {
-          setUserRole(docSnap.data().role);
-        }
+    if (docSnap.exists()) {
+  setUserRole(docSnap.data().role);
+  setUserName(docSnap.data().name);
+  setUserId(user.uid);
+}
       }
       await fetchNotices(!!user);
       setLoading(false);
@@ -112,6 +117,13 @@ export default function Notices() {
     if (!confirm("Are you sure you want to delete this notice?")) return;
     try {
       await deleteDoc(doc(db, "notices", id));
+await logAction(
+  "Notice Deleted",
+  `Notice deleted by ${userName}`,
+  userName,
+  userId,
+  "notice"
+);
       setNotices(notices.filter((n) => n.id !== id));
     } catch {
       alert("Failed to delete notice.");
