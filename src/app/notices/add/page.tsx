@@ -8,8 +8,6 @@ import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-
-
 const ALLOWED_ROLES = ["secretary", "president", "admin"];
 const SECRET_ALLOWED_ROLES = ["secretary", "admin"];
 
@@ -35,13 +33,6 @@ export default function AddNotice() {
           setUserName(data.name);
           if (!ALLOWED_ROLES.includes(data.role)) {
             router.push("/notices");
-            await logAction(
-  "Notice Added",
-  `New ${type} notice "${title}" added`,
-  userName,
-  uid,
-  "notice"
-);
           }
         }
       }
@@ -73,6 +64,13 @@ export default function AddNotice() {
         createdById: uid,
         createdAt: new Date().toISOString(),
       });
+      await logAction(
+        "Notice Added",
+        `New ${type} notice "${title}" added`,
+        userName,
+        uid,
+        "notice"
+      );
       router.push("/notices");
     } catch {
       setError("Failed to add notice. Please try again.");

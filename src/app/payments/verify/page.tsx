@@ -63,6 +63,7 @@ export default function VerifyPayments() {
   }, [router]);
 
   const handleApprove = async (id: string) => {
+    const payment = payments.find(p => p.id === id);
     await updateDoc(doc(db, "payments", id), {
       status: "approved",
       approvedBy: userName,
@@ -71,15 +72,16 @@ export default function VerifyPayments() {
     });
     await fetchPendingPayments();
     await logAction(
-  "Payment Approved",
-  `Payment of ৳${payments.find(p => p.id === id)?.amount} approved for ${payments.find(p => p.id === id)?.userName}`,
-  userName,
-  uid,
-  "payment"
-);
+      "Payment Approved",
+      `Payment of ৳${payment?.amount} approved for ${payment?.userName}`,
+      userName,
+      uid,
+      "payment"
+    );
   };
 
   const handleReject = async (id: string) => {
+    const payment = payments.find(p => p.id === id);
     if (!confirm("Are you sure you want to reject this payment?")) return;
     await updateDoc(doc(db, "payments", id), {
       status: "rejected",
@@ -89,12 +91,12 @@ export default function VerifyPayments() {
     });
     await fetchPendingPayments();
     await logAction(
-  "Payment Rejected",
-  `Payment rejected for ${payments.find(p => p.id === id)?.userName}`,
-  userName,
-  uid,
-  "payment"
-);
+      "Payment Rejected",
+      `Payment rejected for ${payment?.userName}`,
+      userName,
+      uid,
+      "payment"
+    );
   };
 
   if (loading) {
