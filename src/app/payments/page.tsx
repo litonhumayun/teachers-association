@@ -1,5 +1,6 @@
 "use client";
 
+import { generateReceipt } from "@/components/PaymentReceipt";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -204,16 +205,17 @@ if (donationSnap.exists()) {
         {activeTab === "my" && (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-600">
-                <tr>
-                  <th className="px-4 py-3 text-left">Month</th>
-                  <th className="px-4 py-3 text-left">Amount</th>
-                  <th className="px-4 py-3 text-left">Method</th>
-                  <th className="px-4 py-3 text-left">Transaction ID</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">Action</th>
-                </tr>
-              </thead>
+<thead className="bg-gray-50 text-gray-600">
+  <tr>
+    <th className="px-4 py-3 text-left">Month</th>
+    <th className="px-4 py-3 text-left">Amount</th>
+    <th className="px-4 py-3 text-left">Method</th>
+    <th className="px-4 py-3 text-left">Transaction ID</th>
+    <th className="px-4 py-3 text-left">Status</th>
+    <th className="px-4 py-3 text-left">Action</th>
+    <th className="px-4 py-3 text-left">Receipt</th>
+  </tr>
+</thead>
               <tbody>
                 {months.map((month) => {
                   const { status, payment } = getMonthStatus(month);
@@ -239,22 +241,32 @@ if (donationSnap.exists()) {
                           {status === "due" ? "Due" : status}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        {status === "due" && (
-                          <Link
-                            href={`/payments/pay?month=${month}`}
-                            className="bg-green-700 text-white px-3 py-1 rounded text-xs hover:bg-green-800 transition"
-                          >
-                            Pay Now
-                          </Link>
-                        )}
-                        {status === "pending" && (
-                          <span className="text-xs text-yellow-600">Awaiting verification</span>
-                        )}
-                        {status === "approved" && (
-                          <span className="text-xs text-green-600">✅ Paid</span>
-                        )}
-                      </td>
+<td className="px-4 py-3">
+  {status === "due" && (
+    <Link
+      href={`/payments/pay?month=${month}`}
+      className="bg-green-700 text-white px-3 py-1 rounded text-xs hover:bg-green-800 transition"
+    >
+      Pay Now
+    </Link>
+  )}
+  {status === "pending" && (
+    <span className="text-xs text-yellow-600">Awaiting verification</span>
+  )}
+  {status === "approved" && (
+    <span className="text-xs text-green-600">✅ Paid</span>
+  )}
+</td>
+<td className="px-4 py-3">
+  {status === "approved" && (
+    <button
+      onClick={() => generateReceipt(payment!)}
+      className="bg-green-700 text-white px-2 py-1 rounded text-xs hover:bg-green-800 transition"
+    >
+      📄 Receipt
+    </button>
+  )}
+</td>
                     </tr>
                   );
                 })}
@@ -278,6 +290,7 @@ if (donationSnap.exists()) {
                     <th className="px-4 py-3 text-left">Amount</th>
                     <th className="px-4 py-3 text-left">Method</th>
                     <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left">Receipt</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -301,9 +314,19 @@ if (donationSnap.exists()) {
                             ? "bg-yellow-100 text-yellow-700"
                             : "bg-red-100 text-red-700"
                         }`}>
-                          {payment.status}
+                          {payment.status} 
                         </span>
                       </td>
+                      <td className="px-4 py-3">
+  {payment.status === "approved" && (
+    <button
+      onClick={() => generateReceipt(payment)}
+      className="bg-green-700 text-white px-3 py-1 rounded text-xs hover:bg-green-800 transition"
+    >
+      📄 Receipt
+    </button>
+  )}
+</td>
                     </tr>
                   ))}
                 </tbody>
