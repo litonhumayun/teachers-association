@@ -52,10 +52,14 @@ export default function Navbar() {
   }, []);
 
   // Close mobile menu on route change
-  useEffect(() => {
+// Close mobile menu on route change
+useEffect(() => {
+  const timer = setTimeout(() => {
     setMobileMenuOpen(false);
     setDropdownOpen(false);
-  }, [pathname]);
+  }, 0);
+  return () => clearTimeout(timer);
+}, [pathname]);
 
   const handleLogout = async () => {
     await signOut(auth);
