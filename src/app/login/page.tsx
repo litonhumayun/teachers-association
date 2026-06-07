@@ -2,6 +2,7 @@
 
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -59,6 +60,14 @@ export default function Login() {
               placeholder="Enter your password"
             />
           </div>
+          <div className="flex justify-end">
+  <Link
+    href="/forgot-password"
+    className="text-sm text-green-700 hover:underline"
+  >
+    Forgot Password?
+  </Link>
+</div>
           {error && <p className="text-red-500 text-sm">{error}</p>}
           <button
             type="submit"
