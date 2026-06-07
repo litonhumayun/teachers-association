@@ -1,5 +1,6 @@
 "use client";
 
+import InstituteSelect from "@/components/InstituteSelect";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { logAction } from "@/lib/auditLog";
 import { auth, db } from "@/lib/firebase";
@@ -219,16 +220,13 @@ const handleDeleteRequest = async () => {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Current Institute</label>
-              <input
-                type="text"
-                name="institute"
-                value={userData?.institute || ""}
-                onChange={handleChange}
-                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
+            <div className="col-span-2">
+  <label className="block text-sm font-medium mb-1">Current Institute</label>
+  <InstituteSelect
+    value={userData?.institute || ""}
+    onChange={(value) => setUserData({ ...userData!, institute: value })}
+  />
+</div>
 
             <div>
               <label className="block text-sm font-medium mb-1">Mobile</label>

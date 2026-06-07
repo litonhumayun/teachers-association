@@ -1,5 +1,6 @@
 "use client";
 
+import InstituteSelect from "@/components/InstituteSelect";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { logAction } from "@/lib/auditLog";
 import { auth, db } from "@/lib/firebase";
@@ -217,17 +218,14 @@ fromDivision: userData?.division,
 
             <form onSubmit={handleRequest} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">
-                  New Institute <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={toInstitute}
-                  onChange={(e) => setToInstitute(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Enter new institute name"
-                />
-              </div>
+  <label className="block text-sm font-medium mb-1">
+    New Institute <span className="text-red-500">*</span>
+  </label>
+  <InstituteSelect
+    value={toInstitute}
+    onChange={(value) => setToInstitute(value)}
+  />
+</div>
 <div>
   <label className="block text-sm font-medium mb-1">
     New Division <span className="text-gray-400 text-xs">(leave unchanged if same)</span>
