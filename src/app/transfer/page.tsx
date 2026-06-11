@@ -3,10 +3,12 @@
 import InstituteSelect from "@/components/InstituteSelect";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { logAction } from "@/lib/auditLog";
+import { transferApprovedTemplate, transferRejectedTemplate } from "@/lib/emailTemplates";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
+
 
 interface Transfer {
   id: string;
@@ -45,6 +47,22 @@ export default function Transfer() {
   const [activeTab, setActiveTab] = useState("request");
   const [toDivision, setToDivision] = useState("");
 
+  const sendEmailNotification = async (
+    to: string,
+    subject: string,
+    html: string
+  ) => {
+    try {
+      await fetch("/api/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, subject, html }),
+      });
+    } catch {
+      console.error("Email notification failed");
+    }
+  };
+
   const fetchTransfers = async (uid: string, role: string) => {
     let q;
     if (role === "admin") {
@@ -77,6 +95,18 @@ export default function Transfer() {
     e.preventDefault();
     setError("");
     setSuccess("");
+
+
+    const hasPending = transfers.some(
+      (t) => t.userId === userData?.uid && t.status === "pending"
+    );
+  
+    if (hasPending) {
+      setError("You already have a pending transfer request. Please wait for the admin to process it.");
+      return;
+    } 
+
+
 
     if (!toInstitute || !reason) {
       setError("Please fill in all fields.");
@@ -141,7 +171,19 @@ fromDivision: userData?.division,
         userData?.uid || "",
         "member"
       );
-
+// Get member email
+const userSnap = await getDoc(doc(db, "users", transfer.userId));
+if (userSnap.exists()) {
+  await sendEmailNotification(
+    userSnap.data().email,
+    "Transfer approved!",
+    transferApprovedTemplate(
+      transfer.userName,
+      transfer.fromInstitute,
+      transfer.toInstitute
+    )
+  );
+}
       await fetchTransfers(userData?.uid || "", userData?.role || "");
     } catch {
       alert("Failed to approve transfer.");
@@ -156,7 +198,17 @@ fromDivision: userData?.division,
         approvedBy: userData?.name,
         approvedAt: new Date().toISOString(),
       });
-
+  
+      // Fetch user email to send notification
+      const userSnap = await getDoc(doc(db, "users", transfer.userId));
+      if (userSnap.exists()) {
+        await sendEmailNotification(
+          userSnap.data().email,
+          "Transfer request update",
+          transferRejectedTemplate(transfer.userName, transfer.fromInstitute, transfer.toInstitute)
+        );
+      }
+  
       await logAction(
         "Transfer Rejected",
         `Transfer request of ${transfer.userName} rejected`,
@@ -164,7 +216,7 @@ fromDivision: userData?.division,
         userData?.uid || "",
         "member"
       );
-
+  
       await fetchTransfers(userData?.uid || "", userData?.role || "");
     } catch {
       alert("Failed to reject transfer.");
@@ -268,13 +320,18 @@ fromDivision: userData?.division,
               {error && <p className="text-red-500 text-sm">{error}</p>}
               {success && <p className="text-green-500 text-sm">{success}</p>}
 
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full bg-green-700 text-white py-2 rounded-lg hover:bg-green-800 transition disabled:opacity-50"
-              >
-                {saving ? "Submitting..." : "Submit Transfer Request"}
-              </button>
+<button
+  type="submit"
+  disabled={saving || transfers.some(t => t.userId === userData?.uid && t.status === "pending")}
+  className="w-full bg-green-700 text-white py-2 rounded-lg hover:bg-green-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+>
+  {saving 
+    ? "Submitting..." 
+    : transfers.some(t => t.userId === userData?.uid && t.status === "pending")
+      ? "Request Already Pending" 
+      : "Submit Transfer Request"
+  }
+</button>
             </form>
           </div>
         )}

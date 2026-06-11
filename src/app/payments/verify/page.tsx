@@ -8,6 +8,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { paymentApprovedTemplate, paymentRejectedTemplate } from "@/lib/emailTemplates";
 
 interface Payment {
   id: string;
@@ -215,6 +216,22 @@ export default function VerifyPayments() {
   const [uid, setUid] = useState("");
   const router = useRouter();
 
+  const sendEmailNotification = async (
+    to: string,
+    subject: string,
+    html: string
+  ) => {
+    try {
+      await fetch("/api/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, subject, html }),
+      });
+    } catch {
+      console.error("Email notification failed");
+    }
+  };
+
   const fetchPayments = async () => {
     const pendingSnap = await getDocs(
       query(collection(db, "payments"), where("status", "==", "pending"))
@@ -253,12 +270,35 @@ export default function VerifyPayments() {
 
   const handleApprove = async (id: string) => {
     const payment = pendingPayments.find((p) => p.id === id);
+  
     await updateDoc(doc(db, "payments", id), {
       status: "approved",
       approvedBy: userName,
       approvedById: uid,
       approvedAt: new Date().toISOString(),
     });
+  
+    // Get member email
+    const userSnap = await getDoc(doc(db, "users", payment?.userId || ""));
+    if (userSnap.exists()) {
+      const monthLabel = payment?.month
+        ? new Date(payment.month + "-01").toLocaleDateString("en-US", {
+            month: "long",
+            year: "numeric",
+          })
+        : "Donation";
+  
+      await sendEmailNotification(
+        userSnap.data().email,
+        "Payment confirmed!",
+        paymentApprovedTemplate(
+          payment?.userName || "",
+          payment?.amount || 0,
+          monthLabel
+        )
+      );
+    }
+  
     await logAction(
       "Payment Approved",
       `Payment of ৳${payment?.amount} approved for ${payment?.userName}`,
@@ -271,20 +311,44 @@ export default function VerifyPayments() {
 
   const handleReject = async (id: string) => {
     if (!confirm("Are you sure you want to reject this payment?")) return;
+    
     const payment = pendingPayments.find((p) => p.id === id);
+    if (!payment) return;
+  
+    // 1. Update Firestore
     await updateDoc(doc(db, "payments", id), {
       status: "rejected",
       rejectedBy: userName,
       rejectedById: uid,
       rejectedAt: new Date().toISOString(),
     });
+  
+    // 2. Fetch user email to send notification
+    const userSnap = await getDoc(doc(db, "users", payment.userId));
+    if (userSnap.exists()) {
+      const monthLabel = payment.month
+        ? new Date(payment.month + "-01").toLocaleDateString("en-US", {
+            month: "long",
+            year: "numeric",
+          })
+        : "Donation";
+  
+      await sendEmailNotification(
+        userSnap.data().email,
+        "Payment Rejected",
+        paymentRejectedTemplate(payment.userName, payment.amount, monthLabel)
+      );
+    }
+  
+    // 3. Log the action
     await logAction(
       "Payment Rejected",
-      `Payment rejected for ${payment?.userName}`,
+      `Payment of ৳${payment.amount} rejected for ${payment.userName}`,
       userName,
       uid,
       "payment"
     );
+    
     await fetchPayments();
   };
 

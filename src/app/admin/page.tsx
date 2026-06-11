@@ -7,6 +7,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { accountDeletedTemplate, memberApprovedTemplate } from "@/lib/emailTemplates";
 
 interface UserData {
   uid: string;
@@ -60,7 +61,21 @@ export default function AdminPanel() {
     Physics: "44",
     Chemistry: "55",
   };
-
+  const sendEmailNotification = async (
+    to: string,
+    subject: string,
+    html: string
+  ) => {
+    try {
+      await fetch("/api/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, subject, html }),
+      });
+    } catch {
+      console.error("Email notification failed");
+    }
+  };
   const fetchMembers = async () => {
     const pendingQuery = query(
       collection(db, "users"),
@@ -147,6 +162,11 @@ export default function AdminPanel() {
       approvedAt: new Date().toISOString(),
     });
     await fetchMembers();
+    await sendEmailNotification(
+      memberData.email,
+      "Your membership has been approved!",
+      memberApprovedTemplate(memberData.name, memberId)
+    );
     await logAction(
       "Member Approved",
       `Member ${memberData.name} (${memberId}) approved`,
@@ -391,8 +411,22 @@ export default function AdminPanel() {
                               <button
                                 onClick={async () => {
                                   if (!confirm("Are you sure you want to delete this member?")) return;
+                                  // 1. Fetch user data first to get their email
+  const userDoc = await getDoc(doc(db, "users", req.userId));
+  const userData = userDoc.data();
+  // 2. Perform the database updates
                                   await updateDoc(doc(db, "users", req.userId), { status: "deleted" });
                                   await updateDoc(doc(db, "deleteRequests", req.id), { status: "approved" });
+                                  
+                                  // 3. Send the notification
+  if (userData?.email) {
+    await sendEmailNotification(
+      userData.email,
+      "Your account has been deleted",
+      accountDeletedTemplate(req.userName)
+    );
+  }
+  // 4. Cleanup and Logging
                                   await logAction("Member Deleted", `${req.userName} (${req.memberId}) deleted by admin`, currentUser?.name || "", currentUser?.uid || "", "member");
                                   await fetchDeleteRequests();
                                   await fetchMembers();

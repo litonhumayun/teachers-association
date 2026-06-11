@@ -7,6 +7,8 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { expenseApprovedTemplate, expenseRejectedTemplate } from "@/lib/emailTemplates";
+
 
 interface Expense {
   id: string;
@@ -18,6 +20,7 @@ interface Expense {
   isRequest: boolean;
   createdBy: string;
   createdAt: string;
+  createdById: string; // Add this line
   treasurerApproved: boolean;
   treasurerApprovedBy: string;
   treasurerApprovedAt: string;
@@ -56,64 +59,104 @@ const [processing, setProcessing] = useState(false);
     return () => unsubscribe();
   }, [id]);
 
-  const handleApprove = async () => {
-    if (!expense) return;
-    setProcessing(true);
+  // Add this helper function inside the ExpenseReview component
+const sendEmailNotification = async (to: string, subject: string, html: string) => {
+  try {
+    await fetch("/api/email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, subject, html }),
+    });
+  } catch (error) {
+    console.error("Email notification failed", error);
+  }
+};
 
-    const updates: Record<string, unknown> = {};
-    const now = new Date().toISOString();
+const handleApprove = async () => {
+  if (!expense) return;
+  setProcessing(true);
 
-    if (userRole === "treasurer" && !expense.treasurerApproved) {
-      updates.treasurerApproved = true;
-      updates.treasurerApprovedBy = userName;
-      updates.treasurerApprovedAt = now;
+  const updates: Record<string, unknown> = {};
+  const now = new Date().toISOString();
+
+  if (userRole === "treasurer" && !expense.treasurerApproved) {
+    updates.treasurerApproved = true;
+    updates.treasurerApprovedBy = userName;
+    updates.treasurerApprovedAt = now;
+  }
+
+  if (userRole === "admin" && !expense.adminApproved) {
+    updates.adminApproved = true;
+    updates.adminApprovedBy = userName;
+    updates.adminApprovedAt = now;
+  }
+
+  const treasurerApproved = userRole === "treasurer" ? true : expense.treasurerApproved;
+  const adminApproved = userRole === "admin" ? true : expense.adminApproved;
+
+  if (treasurerApproved && adminApproved) {
+    updates.status = "approved";
+  }
+
+  await updateDoc(doc(db, "expenses", id), updates);
+
+  // Email Notification Logic
+  if (treasurerApproved && adminApproved) {
+    const creatorSnap = await getDoc(doc(db, "users", expense.createdById));
+    if (creatorSnap.exists()) {
+      const creatorEmail = creatorSnap.data().email;
+      await sendEmailNotification(
+        creatorEmail,
+        "Expense Approved",
+        expenseApprovedTemplate(expense.createdBy, expense.title, expense.amount)
+      );
     }
+  }
 
-    if (userRole === "admin" && !expense.adminApproved) {
-      updates.adminApproved = true;
-      updates.adminApprovedBy = userName;
-      updates.adminApprovedAt = now;
-    }
+  const updated = await getDoc(doc(db, "expenses", id));
+  setExpense({ id: updated.id, ...updated.data() } as Expense);
+  
+  await logAction("Expense Approved", `Expense "${expense.title}" approved`, userName, uid, "expense");
+  setProcessing(false);
+};
 
-    // Check if both approved
-    const treasurerApproved = userRole === "treasurer" ? true : expense.treasurerApproved;
-    const adminApproved = userRole === "admin" ? true : expense.adminApproved;
-
-    if (treasurerApproved && adminApproved) {
-      updates.status = "approved";
-    }
-
-    await updateDoc(doc(db, "expenses", id), updates);
-
-    // Refresh
-    const updated = await getDoc(doc(db, "expenses", id));
-    setExpense({ id: updated.id, ...updated.data() } as Expense);
-    await logAction(
-  "Expense Approved",
-  `Expense "${expense.title}" of ৳${expense.amount} approved`,
-  userName,
-  uid,
-  "expense"
-);
-    setProcessing(false);
-  };
 
 const handleReject = async () => {
   if (!expense) return;
   if (!confirm("Are you sure you want to reject this expense?")) return;
   setProcessing(true);
+
+  // 1. Update status
   await updateDoc(doc(db, "expenses", id), {
     status: "rejected",
     rejectedBy: userName,
     rejectedAt: new Date().toISOString(),
   });
-  await logAction(
-    "Expense Rejected",
-    `Expense "${expense.title}" of ৳${expense.amount} rejected`,
-    userName,
-    uid,
-    "expense"
-  );
+
+  // 2. Attempt Email Notification
+  console.log("Starting rejection notification for:", expense.createdById);
+  try {
+    const creatorSnap = await getDoc(doc(db, "users", expense.createdById));
+    if (creatorSnap.exists()) {
+      const creatorEmail = creatorSnap.data().email;
+      console.log("Creator email found:", creatorEmail);
+      
+      // Crucial: Wait for the email to send before continuing
+      await sendEmailNotification(
+        creatorEmail,
+        "Expense Rejected",
+        expenseRejectedTemplate(expense.createdBy, expense.title, expense.amount)
+      );
+      console.log("Rejection email sent successfully");
+    } else {
+      console.warn("Creator user not found in database");
+    }
+  } catch (error) {
+    console.error("Error sending rejection email:", error);
+  }
+
+  // 3. Log and redirect
+  await logAction("Expense Rejected", `Expense "${expense.title}" rejected`, userName, uid, "expense");
   router.push("/expenses");
 };
 

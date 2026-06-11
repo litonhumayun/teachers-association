@@ -7,6 +7,9 @@ import { onAuthStateChanged } from "firebase/auth";
 import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { getDocs } from "firebase/firestore"; // Add this
+import { documentUploadedTemplate } from "@/lib/emailTemplates"; // Add this
+
 
 const ALLOWED_ROLES = ["secretary", "president", "admin"];
 
@@ -40,7 +43,7 @@ export default function AddDocument() {
     return () => unsubscribe();
   }, [router]);
 
-  const handleSubmit = async (e: React.SubmitEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -51,6 +54,7 @@ export default function AddDocument() {
 
     setSaving(true);
     try {
+      // 1. Save Document to Firestore
       await addDoc(collection(db, "documents"), {
         title,
         category,
@@ -60,14 +64,27 @@ export default function AddDocument() {
         createdById: uid,
         createdAt: new Date().toISOString(),
       });
+
+      // 2. Broadcast to all users
+      const usersSnap = await getDocs(collection(db, "users"));
+      usersSnap.forEach(async (userDoc) => {
+        const userData = userDoc.data();
+        if (userData.email) {
+          await fetch("/api/email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: userData.email,
+              subject: "New Document Uploaded",
+              html: documentUploadedTemplate(userData.name || "Member", title),
+            }),
+          });
+        }
+      });
+
+      // 3. Log and Redirect
+      await logAction("Document Added", `New document "${title}" added in ${category}`, userName, uid, "document");
       router.push("/documents");
-      await logAction(
-  "Document Added",
-  `New document "${title}" added in ${category}`,
-  userName,
-  uid,
-  "document"
-);
     } catch {
       setError("Failed to add document. Please try again.");
     }

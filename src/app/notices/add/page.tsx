@@ -4,9 +4,10 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import { logAction } from "@/lib/auditLog";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { addDoc, collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { noticeCreatedTemplate } from "@/lib/emailTemplates";
 
 const ALLOWED_ROLES = ["secretary", "president", "admin"];
 const SECRET_ALLOWED_ROLES = ["secretary", "admin"];
@@ -40,22 +41,12 @@ export default function AddNotice() {
     return () => unsubscribe();
   }, [router]);
 
-  const handleSubmit = async (e: React.SubmitEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-
-    if (!title || !content) {
-      setError("Please fill in all fields.");
-      return;
-    }
-
-    if (type === "secret" && !SECRET_ALLOWED_ROLES.includes(userRole)) {
-      setError("You are not allowed to add secret notices.");
-      return;
-    }
-
     setSaving(true);
+  
     try {
+      // 1. Save Notice to Firestore
       await addDoc(collection(db, "notices"), {
         title,
         content,
@@ -64,15 +55,29 @@ export default function AddNotice() {
         createdById: uid,
         createdAt: new Date().toISOString(),
       });
-      await logAction(
-        "Notice Added",
-        `New ${type} notice "${title}" added`,
-        userName,
-        uid,
-        "notice"
-      );
+  
+      // 2. Fetch all registered users
+      const usersSnap = await getDocs(collection(db, "users"));
+  
+      // 3. Loop and send emails
+      usersSnap.forEach(async (userDoc) => {
+        const userData = userDoc.data();
+        if (userData.email) {
+          await fetch("/api/email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: userData.email,
+              subject: "New Notice Posted",
+              html: noticeCreatedTemplate(userData.name || "Member", title),
+            }),
+          });
+        }
+      });
+  
+      await logAction("Notice Added", `New ${type} notice "${title}" added`, userName, uid, "notice");
       router.push("/notices");
-    } catch {
+    } catch (error) {
       setError("Failed to add notice. Please try again.");
     }
     setSaving(false);
